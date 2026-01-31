@@ -1,266 +1,341 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal AI Code Translator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;600;700&display=swap');
+
+
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, setDoc, collection, query, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { 
+  Download, Copy, Zap, Save, Cloud, Terminal, 
+  Flame, Settings, X, Database, ShieldAlert, Wifi, Globe, Sparkles, Server, Github, GitBranch, Share2, Cpu, Rocket, BookOpen, Info, ChevronRight, CheckCircle2, Layers
+} from 'lucide-react';
+
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'consortium-infinite-engine';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [input, setInput] = useState('');
+  const [lang, setLang] = useState('cpp');
+  const [code, setCode] = useState('');
+  const [history, setHistory] = useState([]);
+  const [activeTab, setActiveTab] = useState('editor'); // 'editor' | 'docs' | 'cloud'
+  
+  // Engine Modules
+  const [isMasterMode, setIsMasterMode] = useState(false);
+  const [isP2PMode, setIsP2PMode] = useState(false);
+  const [isVfxMode, setIsVfxMode] = useState(false);
+  const [isGithubMode, setIsGithubMode] = useState(false);
+  const [isStoryMode, setIsStoryMode] = useState(true);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('COPY');
+
+  // 1. Auth (Rule 3)
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Sync (Rule 1 & 2)
+  useEffect(() => {
+    if (!user) return;
+    const historyCol = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
+    const unsubscribe = onSnapshot(historyCol, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHistory(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+    }, (error) => console.error("Firestore Error:", error));
+    return () => unsubscribe();
+  }, [user]);
+
+  const generateLogic = async () => {
+    if (!input || !user) return;
+    setIsLoading(true);
+    setActiveTab('editor');
+    
+    const apiKey = "";
+    const systemPrompt = `
+      You are the Consortium Infinite Engine AI. You generate high-performance, ready-to-use code for ANY game genre or system.
+      Context: ${isStoryMode ? 'Consortium Chronicles Universe. Character focus: Techno the Dragon (Flight/Plasma), Dark Lambo (Chaos/Speed), Darth Wham bow (Void/Impact), Vipus offspring (Swarm/Venom).' : 'General Enterprise-grade Game Development.'}
+      Networking Architecture: ${isMasterMode ? 'Headless Master Server for authoritative state sync.' : ''} ${isP2PMode ? 'WebRTC P2P NAT Traversal for low-latency duels.' : ''}
+      Environment: ${isGithubMode ? 'Generate full GitHub Actions CI/CD workflows alongside the logic.' : ''}
+      Format: Raw code only. No backticks. No markdown. No conversational filler.
+    `;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: input }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] }
+        })
+      });
+      
+      const data = await response.json();
+      const generated = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+      if (generated) {
+        setCode(generated);
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'history'), {
+          lang, prompt: input, code: generated, timestamp: serverTimestamp(),
+          isMaster: isMasterMode, isGithub: isGithubMode
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyToClipboard = (textToCopy = code) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = textToCopy;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    setCopyStatus('COPIED!');
+    setTimeout(() => setCopyStatus('COPY'), 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans selection:bg-blue-600/40">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        :root {
-            --primary: #f97316; /* Rust Orange */
-            --bg-dark: #020617;
-            --card-bg: #0f172a;
-        }
-
-        body {
-            background-color: var(--bg-dark);
-            color: #f8fafc;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .code-font { font-family: 'Fira Code', monospace; }
-
-        .glass {
-            background: rgba(15, 23, 42, 0.8);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .loader {
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid var(--primary);
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        
-        select option { background: #0f172a; }
-    </style>
-</head>
-<body class="min-h-screen p-4 md:p-8">
-
-    <div class="max-w-5xl mx-auto space-y-6">
-        <!-- Header -->
-        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-center bg-[#0a0a0a] border border-white/5 p-6 rounded-[2.5rem] gap-4 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-700 rounded-3xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.3)] animate-pulse">
+              <Cpu size={34} />
+            </div>
             <div>
-                <h1 class="text-3xl font-extrabold bg-gradient-to-r from-orange-400 via-red-400 to-amber-400 bg-clip-text text-transparent">
-                    Universal Logic-to-Code
-                </h1>
-                <p class="text-slate-400 text-sm">Convert English to Rust, C++, Python, and more.</p>
+              <h1 className="text-2xl font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">Consortium Infinite</h1>
+              <div className="flex gap-2 mt-1">
+                <span className="text-[10px] bg-blue-500/10 px-2 py-0.5 rounded-full text-blue-400 font-bold border border-blue-500/20 uppercase tracking-tighter">Engine v5.0 Platinum</span>
+                <span className="text-[10px] bg-green-500/10 px-2 py-0.5 rounded-full text-green-400 font-bold border border-green-500/20 uppercase tracking-tighter">Ready for Anything</span>
+              </div>
             </div>
-            <div class="flex items-center gap-3">
-                <div class="bg-slate-800 p-1 rounded-lg flex border border-slate-700">
-                    <button onclick="setMode('logic')" id="modeLogic" class="px-4 py-1.5 rounded-md text-xs font-bold transition-all bg-orange-600 text-white shadow-lg">GENERATE</button>
-                    <button onclick="setMode('explain')" id="modeExplain" class="px-4 py-1.5 rounded-md text-xs font-bold transition-all text-slate-400 hover:text-white">EXPLAIN</button>
-                </div>
-            </div>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <!-- Left Panel -->
-            <div class="lg:col-span-5 space-y-4">
-                <div class="glass p-5 rounded-2xl shadow-2xl space-y-4">
-                    <div>
-                        <label class="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Target Language</label>
-                        <select id="langSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-200 focus:ring-2 focus:ring-orange-500 outline-none transition-all">
-                            <option value="rust">Rust (Safe & Fast)</option>
-                            <option value="cpp">C++ (Modern/Performance)</option>
-                            <option value="python">Python (AI/General)</option>
-                            <option value="javascript">JavaScript (Web/React)</option>
-                            <option value="java">Java (Enterprise)</option>
-                            <option value="swift">Swift (Apple Ecology)</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <div class="flex justify-between mb-2">
-                            <label class="text-xs font-bold text-slate-500 uppercase tracking-widest block">English Description</label>
-                            <button onclick="toggleStoryContext()" id="storyBtn" class="text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-orange-500 hover:text-orange-400 transition-all">
-                                <i class="fas fa-dragon mr-1"></i> Story Mode: OFF
-                            </button>
-                        </div>
-                        <textarea 
-                            id="userInput" 
-                            class="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-slate-200 focus:ring-2 focus:ring-orange-500 outline-none transition-all custom-scrollbar"
-                            rows="8"
-                            placeholder="e.g. 'Create a Rust struct for Techno the Dragon with fields for health and chaos level. Add a method to increase chaos safely.'"
-                        ></textarea>
-                    </div>
-
-                    <button 
-                        onclick="processCode()" 
-                        id="actionBtn"
-                        class="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg shadow-orange-500/20"
-                    >
-                        <i class="fas fa-microchip"></i>
-                        <span>Generate Code</span>
-                    </button>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="glass p-3 rounded-xl text-[11px] text-slate-400">
-                        <i class="fas fa-shield-alt text-orange-400 mr-1"></i> Memory Safe
-                    </div>
-                    <div class="glass p-3 rounded-xl text-[11px] text-slate-400">
-                        <i class="fas fa-box-open text-orange-400 mr-1"></i> Cargo Ready
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Panel -->
-            <div class="lg:col-span-7 space-y-4">
-                <div id="outputCard" class="glass rounded-2xl overflow-hidden flex flex-col h-full min-h-[450px]">
-                    <div class="bg-slate-800/50 px-5 py-3 border-b border-slate-700 flex items-center justify-between">
-                        <span id="outputTitle" class="text-xs font-mono text-slate-400 uppercase tracking-tighter">Ready...</span>
-                        <div class="flex gap-4">
-                             <button onclick="copyCode()" class="text-xs text-orange-400 hover:text-orange-300 font-bold flex items-center gap-2">
-                                <i id="copyIcon" class="fas fa-copy"></i>
-                                <span id="copyText">COPY</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="loadingPlaceholder" class="hidden flex-1 flex flex-col items-center justify-center space-y-4 opacity-50">
-                        <div class="loader"></div>
-                        <p class="text-xs font-mono uppercase tracking-widest">Compiling Logic...</p>
-                    </div>
-
-                    <div id="codeWrapper" class="flex-1 overflow-auto custom-scrollbar p-6">
-                        <pre id="codeOutput" class="code-font text-sm leading-relaxed text-orange-100 whitespace-pre"></pre>
-                    </div>
-                </div>
-            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <nav className="flex bg-white/5 p-1.5 rounded-2xl mr-4 border border-white/5">
+              <button onClick={() => setActiveTab('editor')} className={`px-5 py-2 rounded-xl text-[11px] font-black transition-all ${activeTab === 'editor' ? 'bg-white text-black shadow-xl' : 'text-white/40 hover:text-white'}`}>ENGINE</button>
+              <button onClick={() => setActiveTab('docs')} className={`px-5 py-2 rounded-xl text-[11px] font-black transition-all ${activeTab === 'docs' ? 'bg-white text-black shadow-xl' : 'text-white/40 hover:text-white'}`}>DOCS</button>
+              <button onClick={() => setActiveTab('cloud')} className={`px-5 py-2 rounded-xl text-[11px] font-black transition-all ${activeTab === 'cloud' ? 'bg-white text-black shadow-xl' : 'text-white/40 hover:text-white'}`}>CLOUD</button>
+            </nav>
+            <button onClick={() => setIsGithubMode(!isGithubMode)} className={`p-3.5 rounded-2xl border transition-all ${isGithubMode ? 'bg-white text-black border-white shadow-lg' : 'bg-white/5 border-white/10 text-white/40 hover:text-white'}`}>
+              <Github size={22} />
+            </button>
+            <button onClick={() => setShowSettings(true)} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
+              <Settings size={22} />
+            </button>
+          </div>
         </div>
-    </div>
 
-    <div id="errorToast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl hidden flex items-center gap-3 font-bold text-sm">
-        <i class="fas fa-exclamation-triangle"></i>
-        <span id="errorMsg">Something went wrong</span>
-    </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Controls Panel */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-[#0a0a0a] border border-white/5 p-8 rounded-[3rem] space-y-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-[80px] rounded-full" />
+              
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.25em] block ml-1">Target Language</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {['cpp', 'rust', 'csharp', 'python'].map(l => (
+                    <button key={l} onClick={() => setLang(l)} className={`py-4 rounded-2xl border text-[11px] font-black uppercase tracking-widest transition-all ${lang === l ? 'bg-white text-black border-white' : 'bg-white/5 border-white/5 text-white/30 hover:border-white/20'}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-    <script>
-        const apiKey = ""; 
-        let currentMode = 'logic';
-        let storyMode = false;
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.25em] block ml-1">Universal Modules</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setIsMasterMode(!isMasterMode)} className={`flex items-center justify-center gap-2 py-4 rounded-2xl border text-[10px] font-black transition-all ${isMasterMode ? 'bg-red-600/20 border-red-500/50 text-red-400' : 'bg-white/5 border-white/5 text-white/30'}`}>
+                    <Server size={14} /> MASTER
+                  </button>
+                  <button onClick={() => setIsP2PMode(!isP2PMode)} className={`flex items-center justify-center gap-2 py-4 rounded-2xl border text-[10px] font-black transition-all ${isP2PMode ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'bg-white/5 border-white/5 text-white/30'}`}>
+                    <Wifi size={14} /> P2P
+                  </button>
+                  <button onClick={() => setIsVfxMode(!isVfxMode)} className={`flex items-center justify-center gap-2 py-4 rounded-2xl border text-[10px] font-black transition-all ${isVfxMode ? 'bg-purple-600/20 border-purple-500/50 text-purple-400' : 'bg-white/5 border-white/5 text-white/30'}`}>
+                    <Sparkles size={14} /> VFX
+                  </button>
+                  <button onClick={() => setIsStoryMode(!isStoryMode)} className={`flex items-center justify-center gap-2 py-4 rounded-2xl border text-[10px] font-black transition-all ${isStoryMode ? 'bg-pink-600/20 border-pink-500/50 text-pink-400' : 'bg-white/5 border-white/5 text-white/30'}`}>
+                    <Flame size={14} /> LORE
+                  </button>
+                </div>
+              </div>
 
-        function setMode(mode) {
-            currentMode = mode;
-            document.getElementById('modeLogic').className = mode === 'logic' ? 'px-4 py-1.5 rounded-md text-xs font-bold transition-all bg-orange-600 text-white' : 'px-4 py-1.5 rounded-md text-xs font-bold transition-all text-slate-400 hover:text-white';
-            document.getElementById('modeExplain').className = mode === 'explain' ? 'px-4 py-1.5 rounded-md text-xs font-bold transition-all bg-orange-600 text-white' : 'px-4 py-1.5 rounded-md text-xs font-bold transition-all text-slate-400 hover:text-white';
-            document.getElementById('actionBtn').innerText = mode === 'logic' ? 'Generate Code' : 'Explain Logic';
-        }
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.25em] block ml-1">Logic Synthesis Prompt</label>
+                <textarea 
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="w-full bg-white/5 border border-white/5 rounded-[2rem] p-6 text-sm h-44 focus:ring-1 focus:ring-white/20 outline-none resize-none placeholder:text-white/10 font-medium transition-all"
+                  placeholder="Ask for anything: procedural systems, boss AI, netcode, or shader logic..."
+                />
+              </div>
 
-        function toggleStoryContext() {
-            storyMode = !storyMode;
-            const btn = document.getElementById('storyBtn');
-            btn.innerHTML = storyMode ? '<i class="fas fa-dragon mr-1"></i> Story Mode: ON' : '<i class="fas fa-dragon mr-1"></i> Story Mode: OFF';
-            btn.classList.toggle('border-orange-500', storyMode);
-            btn.classList.toggle('text-orange-400', storyMode);
-        }
+              <button 
+                onClick={generateLogic}
+                disabled={isLoading}
+                className="w-full py-6 bg-white text-black rounded-[2rem] font-black text-xs flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-95 transition-all shadow-[0_20px_40px_rgba(255,255,255,0.1)]"
+              >
+                {isLoading ? <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" /> : <Zap size={20} />}
+                INITIATE SYNTHESIS
+              </button>
+            </div>
+          </div>
 
-        async function processCode() {
-            const input = document.getElementById('userInput').value.trim();
-            const lang = document.getElementById('langSelect').value;
-            if (!input) return;
+          {/* Core Display Area */}
+          <div className="lg:col-span-8">
+            <div className="bg-[#0a0a0a] border border-white/5 rounded-[3.5rem] h-[820px] flex flex-col shadow-2xl overflow-hidden relative">
+              
+              {activeTab === 'editor' && (
+                <>
+                  <div className="px-12 py-8 border-b border-white/5 flex justify-between items-center bg-[#0c0c0c]">
+                    <div className="flex items-center gap-4">
+                      <div className="flex gap-2">
+                        <div className="w-3.5 h-3.5 rounded-full bg-red-500/80 shadow-lg shadow-red-500/20" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-amber-500/80 shadow-lg shadow-amber-500/20" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-green-500/80 shadow-lg shadow-green-500/20" />
+                      </div>
+                      <span className="ml-6 text-[11px] font-mono text-white/20 uppercase tracking-[0.4em]">engine_runtime.{lang}</span>
+                    </div>
+                    <div className="flex gap-8">
+                       <button onClick={() => copyToClipboard()} className="text-[11px] font-black text-white/30 hover:text-white transition-all uppercase tracking-widest flex items-center gap-2">
+                        <Copy size={16} /> {copyStatus}
+                      </button>
+                      <button className="text-[11px] font-black text-white/30 hover:text-white transition-all uppercase tracking-widest"><Share2 size={16} /></button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto p-12 bg-[#050505] custom-scrollbar">
+                    {code ? (
+                      <pre className="font-mono text-sm leading-relaxed text-blue-100/70 whitespace-pre-wrap">{code}</pre>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center space-y-8 opacity-40">
+                        <div className="relative">
+                          <Layers size={120} className="text-white opacity-[0.05]" />
+                          <div className="absolute inset-0 bg-blue-500/20 blur-[120px] rounded-full" />
+                        </div>
+                        <p className="text-[11px] font-black text-white/10 uppercase tracking-[0.8em]">Infinite Grid Online</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
-            const btn = document.getElementById('actionBtn');
-            const loader = document.getElementById('loadingPlaceholder');
-            const codeWrapper = document.getElementById('codeWrapper');
-            const outputTitle = document.getElementById('outputTitle');
-            const codeOutput = document.getElementById('codeOutput');
+              {activeTab === 'docs' && (
+                <div className="flex-1 overflow-auto p-16 bg-[#080808] custom-scrollbar space-y-16">
+                  <div className="space-y-6">
+                    <h2 className="text-4xl font-black tracking-tighter flex items-center gap-4 text-blue-500 uppercase">
+                      <Github size={40} /> CI/CD Automation
+                    </h2>
+                    <p className="text-white/40 text-sm font-medium leading-relaxed max-w-2xl">
+                      Your engine code is automatically containerized. When **GitHub Mode** is active, every generation includes the `.yml` secrets required for zero-downtime deployment.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                      <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all">
+                        <h3 className="text-xs font-black mb-4 text-white uppercase tracking-widest">Master Pipeline</h3>
+                        <div className="space-y-2 text-[11px] text-white/40 font-mono">
+                          <p>- Build Target: Linux-x64</p>
+                          <p>- Hosting: Edge Nodes</p>
+                          <p>- Deployment: Kubernetes</p>
+                        </div>
+                      </div>
+                      <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all">
+                        <h3 className="text-xs font-black mb-4 text-white uppercase tracking-widest">Client Distribution</h3>
+                        <div className="space-y-2 text-[11px] text-white/40 font-mono">
+                          <p>- CDN: Global Sharding</p>
+                          <p>- Auto-Update: Delta Patching</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-            btn.disabled = true;
-            btn.classList.add('opacity-50');
-            loader.classList.remove('hidden');
-            codeWrapper.classList.add('hidden');
-            outputTitle.innerText = "Processing...";
-            codeOutput.textContent = "";
+              {activeTab === 'cloud' && (
+                <div className="flex-1 p-16 bg-[#080808] flex flex-col items-center justify-center text-center space-y-8">
+                  <div className="w-24 h-24 bg-blue-600/10 rounded-full flex items-center justify-center text-blue-500 border border-blue-500/20 shadow-[0_0_50px_rgba(37,99,235,0.1)]">
+                    <Cloud size={48} />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-black uppercase tracking-tight mb-2">Live Orchestrator</h2>
+                    <p className="text-white/30 text-xs font-medium uppercase tracking-[0.2em]">Deployment Tier: Enterprise Chaos</p>
+                  </div>
+                  <div className="w-full max-w-md bg-white/5 rounded-3xl border border-white/5 p-8 text-left space-y-6">
+                    <div className="flex justify-between items-center text-[10px] font-black text-white/40 uppercase tracking-widest">
+                      <span>Server Status</span>
+                      <span className="text-green-400">Stable</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="w-[85%] h-full bg-gradient-to-r from-blue-600 to-purple-600" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-[#0c0c0c] rounded-2xl border border-white/5">
+                        <p className="text-[10px] font-black text-white/20 uppercase mb-1">Active Users</p>
+                        <p className="text-xl font-black">1.2M+</p>
+                      </div>
+                      <div className="p-4 bg-[#0c0c0c] rounded-2xl border border-white/5">
+                        <p className="text-[10px] font-black text-white/20 uppercase mb-1">Latency</p>
+                        <p className="text-xl font-black text-green-400">12ms</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-            let storyContext = "";
-            if (storyMode) {
-                storyContext = `The user is building the 'Consortium Chronicles' universe. Characters include: Techno the Dragon, Dark Lambo (Dark Dragon), Anti-Dragons, Darth Wham bow. If the prompt mentions these, use idiomatic ${lang} patterns to represent them. For Rust, use Structs and Traits effectively.`;
-            }
+            </div>
+          </div>
+        </div>
+      </div>
 
-            const systemPrompt = `You are an expert ${lang} programmer.
-            Mode: ${currentMode === 'logic' ? 'Raw Code' : 'Educational Explanation'}
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-50 flex items-center justify-center p-6">
+          <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-2xl rounded-[4rem] p-16 shadow-2xl relative">
+            <button onClick={() => setShowSettings(false)} className="absolute top-12 right-12 text-white/20 hover:text-white transition-all"><X size={36} /></button>
+            <h2 className="text-4xl font-black mb-16 flex items-center gap-6 uppercase tracking-tighter">
+              <Settings className="text-blue-500" size={40} /> Engine Overrides
+            </h2>
             
-            Strict Instructions:
-            1. If mode is Logic: Return ONLY code. Include standard libraries (std in Rust, etc.) and external crates if common.
-            2. If mode is Explain: Teach the user how the code works.
-            3. ${storyContext}
-            4. Never use markdown code blocks (\`\`\`). Return the direct text.`;
+            <div className="space-y-6">
+              <div className="p-10 bg-white/5 rounded-[3rem] border border-white/5 flex items-center justify-between hover:bg-white/[0.07] transition-all group">
+                <div>
+                  <h3 className="text-lg font-black text-white/80 uppercase tracking-tight group-hover:text-white">Auto-Push to GitHub</h3>
+                  <p className="text-xs text-white/30 font-medium">Instantly commit generated core logic to your remote repo.</p>
+                </div>
+                <div className="w-14 h-7 bg-blue-600 rounded-full relative shadow-[0_0_20px_rgba(37,99,235,0.4)]"><div className="absolute top-1 right-1 w-5 h-5 bg-white rounded-full" /></div>
+              </div>
 
-            const MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
-
-            let retries = 0;
-            const maxRetries = 5;
-
-            async function fetchAI() {
-                try {
-                    const response = await fetch(`${MODEL_URL}?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: input }] }],
-                            systemInstruction: { parts: [{ text: systemPrompt }] }
-                        })
-                    });
-
-                    if (!response.ok) throw new Error('API Error');
-                    const data = await response.json();
-                    const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-                    codeOutput.textContent = result ? result.trim() : "No result returned.";
-                    outputTitle.innerText = `${lang.toUpperCase()} Output`;
-                    codeWrapper.classList.remove('hidden');
-                } catch (err) {
-                    if (retries < maxRetries) {
-                        retries++;
-                        await new Promise(r => setTimeout(r, Math.pow(2, retries) * 1000));
-                        return fetchAI();
-                    }
-                    showError("Sync failure. Try again in a moment.");
-                } finally {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-50');
-                    loader.classList.add('hidden');
-                }
-            }
-
-            await fetchAI();
-        }
-
-        function copyCode() {
-            const text = document.getElementById('codeOutput').textContent;
-            if (!text) return;
-            const el = document.createElement('textarea');
-            el.value = text;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            const copyT = document.getElementById('copyText');
-            copyT.innerText = "COPIED!";
-            setTimeout(() => copyT.innerText = "COPY", 2000);
-        }
-
-        function showError(msg) {
-            const toast = document.getElementById('errorToast');
-            document.getElementById('errorMsg').innerText = msg;
-            toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 5000);
-        }
-    </script>
-</body>
-</html>
-
+              <div className="p-10 bg-white/5 rounded-[3rem] border border-white/5 flex items-center justify-between hover:bg-white/[0.07] transition-all group">
+                <div>
+                  <h3 className="text-lg font-black text-white/80 uppercase tracking-tight group-hover:text-white">Master Authority</h3>
+                  <p className="text-xs text-white/30 font-medium">Strict server-side verification for Consortium-scale events.</p>
+                </div>
+                <div className="w-14 h-7 bg-red-600 rounded-full relative shadow-[0_0_20px_rgba(220,38,38,0.4)]"><div className="absolute top-1 right-1 w-5 h-5 bg-white rounded-full" /></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
