@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
@@ -9,12 +7,24 @@ import {
   Flame, Settings, X, Database, ShieldAlert, Wifi, Globe, Sparkles, Server, Github, GitBranch, Share2, Cpu, Rocket, BookOpen, Info, ChevronRight, CheckCircle2, Layers
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// --- SAFE FIREBASE CONFIGURATION ---
+// We use try-catch and defaults to prevent the "index.html bugged out" error
+let firebaseConfig = {};
+try {
+  firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+} catch (e) {
+  console.error("Firebase config parse error:", e);
+}
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'consortium-infinite-engine';
+
+// Only initialize if config exists, otherwise use a dummy app pattern to prevent crashes
+let app, auth, db;
+if (firebaseConfig.apiKey) {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -35,13 +45,19 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [copyStatus, setCopyStatus] = useState('COPY');
 
-  // 1. Auth (Rule 3)
+  // 1. Auth (Rule 3) - Wrapped in safety check
   useEffect(() => {
+    if (!auth) return;
+
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth failed:", err);
       }
     };
     initAuth();
@@ -49,9 +65,9 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Sync (Rule 1 & 2)
+  // 2. Sync (Rule 1 & 2) - Wrapped in safety check
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     const historyCol = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
     const unsubscribe = onSnapshot(historyCol, (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -61,11 +77,12 @@ export default function App() {
   }, [user]);
 
   const generateLogic = async () => {
-    if (!input || !user) return;
+    if (!input) return;
+    // Note: In a real environment, we check for 'user', but we allow UI interaction even if DB fails
     setIsLoading(true);
     setActiveTab('editor');
     
-    const apiKey = "";
+    const apiKey = ""; // Set your Gemini API Key here for local testing
     const systemPrompt = `
       You are the Consortium Infinite Engine AI. You generate high-performance, ready-to-use code for ANY game genre or system.
       Context: ${isStoryMode ? 'Consortium Chronicles Universe. Character focus: Techno the Dragon (Flight/Plasma), Dark Lambo (Chaos/Speed), Darth Wham bow (Void/Impact), Vipus offspring (Swarm/Venom).' : 'General Enterprise-grade Game Development.'}
@@ -89,10 +106,12 @@ export default function App() {
 
       if (generated) {
         setCode(generated);
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'history'), {
-          lang, prompt: input, code: generated, timestamp: serverTimestamp(),
-          isMaster: isMasterMode, isGithub: isGithubMode
-        });
+        if (db && user) {
+          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'history'), {
+            lang, prompt: input, code: generated, timestamp: serverTimestamp(),
+            isMaster: isMasterMode, isGithub: isGithubMode
+          });
+        }
       }
     } catch (err) {
       console.error(err);
